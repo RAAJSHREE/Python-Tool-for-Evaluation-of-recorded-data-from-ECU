@@ -1,0 +1,50 @@
+﻿/*@!Encoding:65001*/
+variables
+{
+  msTimer mainTimer;
+  int totalCycles = 20;
+  int currentCycle = 0;
+  int delayMs = 200;
+
+  message 0x120 MyCANFDMsg;   // CAN-FD Message
+
+  int speed, rpm, temp;
+}
+
+on start
+{
+  write("=== CAN-FD Generator Started ===");
+
+  // REQUIRED FOR CAN-FD
+  MyCANFDMsg.type = 1;   // 1 = CAN-FD frame
+  MyCANFDMsg.dlc  = 8;   // Required, otherwise DLC=0 happens
+
+  setTimer(mainTimer, delayMs);
+}
+
+on timer mainTimer
+{
+  if (currentCycle >= totalCycles)
+  {
+    write("=== Completed all cycles ===");
+    return;
+  }
+
+  speed = currentCycle * 5;              // 1 byte
+  rpm   = 800 + (currentCycle * 50);     // 2 bytes
+  temp  = 40 + currentCycle;             // 1 byte
+
+  // Fill CAN-FD payload
+  MyCANFDMsg.byte(0) = speed;
+  MyCANFDMsg.byte(1) = rpm & 0xFF;
+  MyCANFDMsg.byte(2) = (rpm >> 8) & 0xFF;
+  MyCANFDMsg.byte(3) = temp;
+
+  output(MyCANFDMsg);
+
+  write("TX FD[%d]  speed=%d  rpm=%d  temp=%d",
+         currentCycle, speed, rpm, temp);
+
+  currentCycle++;
+  setTimer(mainTimer, delayMs);
+}
