@@ -1,0 +1,57 @@
+/*@!Encoding:65001*/
+variables
+{
+  msTimer mainTimer;
+  int totalCycles;
+  int currentCycle;
+  int delayMs;
+
+  message 0x123 outMsg;
+}
+
+on start
+{
+  write("*** MultiSignal CAPL Started ***");
+
+  totalCycles = 3;
+  currentCycle = 0;
+  delayMs = 200;
+
+  outMsg.id = 0x123;
+  outMsg.dlc = 8;
+
+  setTimer(mainTimer, 10);
+}
+
+on timer mainTimer
+{
+  float es, tq, tp;
+  int stage;
+  stage = currentCycle % 3;
+
+  switch (stage)
+  {
+    case 0: es = 1000; tq = 50;  tp = 60; break;
+    case 1: es = 3000; tq = 120; tp = 90; break;
+    case 2: es = 6000; tq = 180; tp = 110; break;
+  }
+
+  write("Cycle %d: EngineSpeed=%.1f | Torque=%.1f | Temp=%.1f",
+        currentCycle+1, es, tq, tp);
+
+
+  outMsg.byte(0) = (int)es / 256;
+  outMsg.byte(1) = (int)es % 256;
+
+  outMsg.byte(2) = (int)tq/ 256;
+  outMsg.byte(3) = (int)tq % 256;
+
+  outMsg.byte(4) = (int)tp;
+
+  output(outMsg);
+
+  currentCycle++;
+
+  if (currentCycle < totalCycles)
+      setTimer(mainTimer, delayMs);
+}
