@@ -1,0 +1,24 @@
+/*@!Encoding:1252*/
+/*----------------------------------------------------------
+  CAPL Script: CAN-FD Test Receiver
+-----------------------------------------------------------*/
+
+variables
+{
+  int rx_speed;
+  int rx_rpm;
+  int rx_temp;
+}
+
+on message 0x120
+{
+  rx_speed = this.byte(0);
+
+  rx_rpm = this.byte(1) | (this.byte(2) << 8);
+
+  rx_temp = this.byte(3);
+
+  write("RX FD => Speed=%d | RPM=%d | Temp=%d",
+        rx_speed, rx_rpm, rx_temp);
+}
+
