@@ -16,7 +16,7 @@ Automation solution that combines CAPL scripting for bus signal manipulation wit
    ```bash
    pip install -r requirements.txt
    ```
+3. Activate virtual environment
+4. Run `python ssh_qns_controller.py`
 
-3. Run `python ssh_qns_controller.py`
-
-4. View report in **Reports/analysis_report.html**
+5. View report in **Reports/analysis_report.html**
