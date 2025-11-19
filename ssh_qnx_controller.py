@@ -1,171 +1,178 @@
+import re
 import os
-import time
-import subprocess
 import pandas as pd
-import paramiko
-from scp import SCPClient
-
-# ===========================================================
-#                    CONFIGURATION
-# ===========================================================
-CANOE_HOST = "10.210.53.161"
-CANOE_USER = r"APAC\LC36KOR" # Modify the user name
-CANOE_PASS = password # Change the password in ""
-
-REMOTE_BAT = r"C:\Users\Public\Documents\Vector\CANoe\Projects\CAN_500kBaud_2ch\bat\canoe_simulation.bat"  # Remote Bat location
-REMOTE_BLF_PATH = r"C:/Users/Public/Documents/Vector/CANoe/Projects/CAN_500kBaud_2ch/Logs/SignalReport.blf" #generated blf file
-LOCAL_BLF_PATH = r"./logs/SignalReport.blf" # Local path to copy the generated blf for decoding
-
-PSEXEC_PATH = r"C:\Users\rbh2cob\Documents\PSTools\PsExec.exe"
-
-CYCLES = 20
-DELAY_MS = 200
-
-
-# ===========================================================
-#                    BLF READER (from byte_soup)
-# ===========================================================
 from can.io import BLFReader
 try:
     from can.io.blf import CompressedBLFReader
-except Exception:
+except:
     CompressedBLFReader = None
-
-
-def read_blf_to_dataframe(filepath, max_msgs=None):
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"BLF file not found: {filepath}")
-
-    messages = []
-    reader_classes = [BLFReader]
+ 
+ 
+# ----------------------------------------------------------
+# 1. READ CAPL FILES (.can) & EXTRACT EXPECTED VALUES
+# ----------------------------------------------------------
+CAPL_REGEX = re.compile(
+    r"es\s*=\s*([0-9]+)\s*;\s*tq\s*=\s*([0-9]+)\s*;\s*tp\s*=\s*([0-9]+)",
+    re.IGNORECASE
+)
+ 
+def parse_capl(path):
+    with open(path, "r", encoding="utf-8") as f:
+        txt = f.read()
+    matches = CAPL_REGEX.findall(txt)
+ 
+    es, tq, tp = [], [], []
+    for a, b, c in matches:
+        es.append(int(a))
+        tq.append(int(b))
+        tp.append(int(c))
+    return es, tq, tp
+ 
+ 
+# ----------------------------------------------------------
+# 2. BUILD EXPECTED RANGE TABLE
+# ----------------------------------------------------------
+def build_expected_table(es, tq, tp):
+    def to_stats(values):
+        return {
+            "Min": min(values),
+            "Max": max(values),
+            "Mid": (min(values) + max(values)) / 2
+        }
+ 
+    expected = {
+        "EngineSpeed": to_stats(es),
+        "Torque": to_stats(tq),
+        "CoolantTemp": to_stats(tp)
+    }
+    return expected
+ 
+ 
+# ----------------------------------------------------------
+# 3. READ BLF → Extract actual CAN signal values
+# ----------------------------------------------------------
+def read_blf(blf_path, msg_id=None):
+    rows = []
+ 
+    readers = [BLFReader]
     if CompressedBLFReader:
-        reader_classes.append(CompressedBLFReader)
-
-    last_error = None
-
-    for reader in reader_classes:
+        readers.append(CompressedBLFReader)
+ 
+    for reader in readers:
         try:
-            print(f"[INFO] Trying reader: {reader.__name__}")
-            with reader(filepath) as log:
-                for index, msg in enumerate(log):
-                    if max_msgs and index >= max_msgs:
-                        break
-
-                    arb_id = getattr(msg, "arbitration_id", getattr(msg, "id", None))
-                    data_bytes = getattr(msg, "data", getattr(msg, "payload", []))
-
-                    messages.append({
-                        "timestamp": getattr(msg, "timestamp", None),
-                        "id": hex(arb_id) if arb_id is not None else None,
-                        "dlc": getattr(msg, "dlc", getattr(msg, "length", None)),
-                        "is_fd": getattr(msg, "is_fd", False),
-                        "channel": getattr(msg, "channel", None),
-                        "direction": (
-                            "Tx" if getattr(msg, "is_tx", False)
-                            else "Rx" if getattr(msg, "is_rx", False)
-                            else None
-                        ),
-                        "data": list(data_bytes)
+            with reader(blf_path) as log:
+                for msg in log:
+                    data = bytes(msg.data)
+                    arb = msg.arbitration_id
+ 
+                    if msg_id is not None and arb != msg_id:
+                        continue
+ 
+                    rows.append({
+                        "EngineSpeed": (data[0] << 8) | data[1] if len(data) >= 2 else None,
+                        "Torque": (data[2] << 8) | data[3] if len(data) >= 4 else None,
+                        "CoolantTemp": data[4] if len(data) >= 5 else None
                     })
             break
-
-        except Exception as e:
-            last_error = e
-            print(f"[WARN] {reader.__name__} failed: {e}")
-
-    if not messages:
-        raise RuntimeError(f"BLF reader failed. Last error: {last_error}")
-
-    df = pd.DataFrame(messages)
-    print(f"[OK] Loaded {len(df)} messages from {filepath}")
-    return df
-
-
-# ===========================================================
-#                    SSH / SCP FUNCTIONS
-# ===========================================================
-def scp_get(remote_path, local_path):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    print(f"[INFO] Connecting to remote host {CANOE_HOST}...")
-    ssh.connect(CANOE_HOST, username=CANOE_USER, password=CANOE_PASS, timeout=10)
-
-    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-
-    print("[INFO] Copying BLF file from remote...")
-    with SCPClient(ssh.get_transport()) as scp:
-        scp.get(remote_path, local_path)
-
-    ssh.close()
-    print(f"[OK] File saved to {local_path}")
-
-
-# ===========================================================
-#                 CANOE SIMULATION CONTROL
-# ===========================================================
-def start_canoe_measurement():
-    print("[INFO] Starting CANoe measurement via PsExec...")
-
-    cmd = [
-        PSEXEC_PATH,
-        f"\\\\{CANOE_HOST}",
-        "-u", CANOE_USER,
-        "-p", CANOE_PASS,
-        "-i",
-        REMOTE_BAT
-    ]
-
-    subprocess.run(cmd, check=True)
-    print("[INFO] CANoe launched successfully.")
-
-
-# ===========================================================
-#                   ANALYSIS FUNCTION
-# ===========================================================
-def analyze_blf(blf_path):
-    print("[INFO] Analyzing BLF...")
-
-    df = read_blf_to_dataframe(blf_path)
-    os.makedirs("reports", exist_ok=True)
-
-    decoded_csv = "./reports/decoded.csv"
-    df.to_csv(decoded_csv, index=False)
-
-    signals = ["EngineSpeed", "Torque", "CoolantTemp"]
-    analysis = pd.DataFrame({
-        "Signal": signals,
-        "Min": [df.get(sig, pd.Series()).min() for sig in signals],
-        "Max": [df.get(sig, pd.Series()).max() for sig in signals],
-        "Mid": [(df.get(sig, pd.Series()).min() + df.get(sig, pd.Series()).max())/2 for sig in signals]
-    })
-
-    analysis_csv = "./reports/signal_analysis.csv"
-    analysis.to_csv(analysis_csv, index=False)
-
-    print("[OK] Analysis completed.")
-    return {"decoded": decoded_csv, "analysis": analysis_csv}
-
-
-# ===========================================================
-#                           MAIN
-# ===========================================================
+        except:
+            continue
+ 
+    return pd.DataFrame(rows)
+ 
+ 
+# ----------------------------------------------------------
+# 4. COMPARE EXPECTED VS ACTUAL
+# ----------------------------------------------------------
+def compare(expected, actual_df):
+    results = []
+ 
+    for sig, stats in expected.items():
+        if sig not in actual_df.columns:
+            actual_min = actual_max = actual_mid = None
+        else:
+            actual_min = actual_df[sig].min()
+            actual_max = actual_df[sig].max()
+            actual_mid = (actual_min + actual_max) / 2
+ 
+        res = "PASS" if (actual_min == stats["Min"] and actual_max == stats["Max"]) else "FAIL"
+ 
+        results.append({
+            "Signal": sig,
+            "Exp Min": stats["Min"],
+            "Exp Max": stats["Max"],
+            "Exp Mid": stats["Mid"],
+            "Act Min": actual_min,
+            "Act Max": actual_max,
+            "Act Mid": actual_mid,
+            "Result": res
+        })
+ 
+    return pd.DataFrame(results)
+ 
+ 
+# ----------------------------------------------------------
+# 5. GENERATE HTML REPORT
+# ----------------------------------------------------------
+def write_html(expected, actual, comparison, out_path):
+    html = f"""
+<html>
+<head>
+<style>
+    body {{ font-family: Arial; padding: 20px; background: #f3f4f7; }}
+    table {{ border-collapse: collapse; width: 90%; margin-bottom: 20px; }}
+    th, td {{ border: 1px solid #ccc; padding: 8px; text-align: center; }}
+    th {{ background: #333; color: white; }}
+    .PASS {{ background: #2ecc71; color: white; }}
+    .FAIL {{ background: #e74c3c; color: white; }}
+</style>
+</head><body>
+ 
+    <h1>Signal Validation Dashboard</h1>
+ 
+    <h2>Expected Values</h2>
+    {pd.DataFrame(expected).T.to_html()}
+ 
+    <h2>Actual Sample</h2>
+    {actual.head(20).to_html()}
+ 
+    <h2>Comparison</h2>
+    {comparison.to_html(index=False, classes=comparison["Result"].tolist())}
+ 
+    </body></html>
+    """
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"[OK] HTML report saved: {out_path}")
+ 
+ 
+# ----------------------------------------------------------
+# 6. MAIN EXECUTION
+# ----------------------------------------------------------
 def main():
-    # 1. Start CANoe
-    start_canoe_measurement()
-
-    # 2. Wait for measurement to finish
-    wait_sec = (CYCLES * DELAY_MS / 1000.0) + 5
-    print(f"[INFO] Waiting {wait_sec:.1f} seconds for CAPL cycles...")
-    time.sleep(wait_sec)
-
-    # 3. Copy BLF
-    scp_get(REMOTE_BLF_PATH, LOCAL_BLF_PATH)
-
-    # 4. Analyze
-    report_paths = analyze_blf(LOCAL_BLF_PATH)
-    print("[DONE] Reports generated:", report_paths)
-
-
+ 
+    CAPL1 = r"C:\Users\rbh2cob\Documents\EMS KT\Test_Hackathon\CAPL\MultiSignal.can"
+    CAPL2 = r"C:\Users\rbh2cob\Documents\EMS KT\Test_Hackathon\CAPL\MultiSignal_Test.can"
+    BLF_FILE = r"../SignalReport22.blf"    # You run BAT manually → BLF already exists
+ 
+    print("[INFO] Reading expected from CAPL files...")
+    es1, tq1, tp1 = parse_capl(CAPL1)
+    es2, tq2, tp2 = parse_capl(CAPL2)
+ 
+    es = es1 + es2
+    tq = tq1 + tq2
+    tp = tp1 + tp2
+ 
+    expected = build_expected_table(es, tq, tp)
+ 
+    print("[INFO] Reading actual values from BLF...")
+    df_actual = read_blf(BLF_FILE, msg_id=0x123)
+ 
+    print("[INFO] Comparing...")
+    df_compare = compare(expected, df_actual)
+ 
+    print("[INFO] Generating HTML report...")
+    write_html(expected, df_actual, df_compare, "SignalDashboard.html")
+ 
+ 
 if __name__ == "__main__":
     main()
