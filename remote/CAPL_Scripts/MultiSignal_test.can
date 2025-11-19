@@ -1,0 +1,59 @@
+﻿/*@!Encoding:65001*/
+
+variables
+{
+  msTimer testModuleTimer;
+  int currentCycle = 0;
+  int delayMs = 50;      // MUST NOT be const in CAPL
+
+  message 0x123 outMsg;        // message must be declared without ID
+
+  float EngineSpeed;
+  float Torque;
+  float CoolantTemp;
+}
+
+
+on timer testModuleTimer
+{
+  float es, tq, tp;
+  int stage;
+  stage = currentCycle % 3;
+
+  switch(stage)
+  {
+    case 0: es = 1000.0; tq = 50.0;  tp = 60.0;  break;
+    case 1: es = 3000.0; tq = 120.0; tp = 90.0;  break;
+    case 2: es = 6000.0; tq = 180.0; tp = 110.0; break;
+  }
+
+  EngineSpeed = es;
+  Torque      = tq;
+  CoolantTemp = tp;
+
+  // Convert to integer
+
+
+  // Encode CAN bytes
+  outMsg.byte(0) = (int)es / 256;
+  outMsg.byte(1) = (int)tq % 256;
+
+  outMsg.byte(2) = (int)tq / 256;
+  outMsg.byte(3) = (int)tq % 256;
+
+  outMsg.byte(4) = (int)tp;
+
+  // Send CAN message
+  output(outMsg);
+
+  // Console print
+  write("Cycle %d → Sent 0x123: [%d %d %d %d %d]",
+        currentCycle + 1,
+        outMsg.byte(0), outMsg.byte(1),
+        outMsg.byte(2), outMsg.byte(3), outMsg.byte(4));
+
+  currentCycle++;
+
+  // continue timer
+  setTimer(testModuleTimer, delayMs);
+}
