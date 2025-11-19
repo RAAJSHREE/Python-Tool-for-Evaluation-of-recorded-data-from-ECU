@@ -6,7 +6,8 @@ try:
     from can.io.blf import CompressedBLFReader
 except:
     CompressedBLFReader = None
- 
+import paramiko
+from scp import SCPClient
  
 # ----------------------------------------------------------
 # 1. READ CAPL FILES (.can) & EXTRACT EXPECTED VALUES
@@ -143,16 +144,38 @@ def write_html(expected, actual, comparison, out_path):
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"[OK] HTML report saved: {out_path}")
- 
+
+def remote_copy():
+    # Remote connection details
+    host = "10.210.53.161"
+    user = "LC36KOR"
+    password = "MSRADARESDST#8"
+
+    # Use forward slashes for Windows path
+    remote_path = r"C:/Users/Public/Documents/Vector/CANoe/Projects/CAN_500kBaud_2ch/Logs/SignalReport.blf"
+    local_path = r"C:/Users/rbh2cob/Documents/EMS KT/Test_Hackathon/Reports/SignalReport.blf"
+
+    # Connect via SSH
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(host, username=user, password=password)
+
+    # SCP transfer
+    with SCPClient(ssh.get_transport()) as scp:
+        scp.get(remote_path, local_path)  # Pull file from remote
+
+    ssh.close()
+    print("✅ BLF file copied to local machine")
+
  
 # ----------------------------------------------------------
 # 6. MAIN EXECUTION
 # ----------------------------------------------------------
 def main():
- 
+    remote_copy()
     CAPL1 = r"C:\Users\rbh2cob\Documents\EMS KT\Test_Hackathon\CAPL\MultiSignal.can"
     CAPL2 = r"C:\Users\rbh2cob\Documents\EMS KT\Test_Hackathon\CAPL\MultiSignal_Test.can"
-    BLF_FILE = r"../SignalReport22.blf"    # You run BAT manually → BLF already exists
+    BLF_FILE = r"C:\Users\rbh2cob\Documents\EMS KT\Test_Hackathon\Reports\SignalReport.blf"    # You run BAT manually → BLF already exists
  
     print("[INFO] Reading expected from CAPL files...")
     es1, tq1, tp1 = parse_capl(CAPL1)
