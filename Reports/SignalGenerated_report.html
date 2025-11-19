@@ -1,0 +1,129 @@
+
+<html>
+<head>
+<style>
+    body { font-family: Arial; padding: 20px; background: #f3f4f7; }
+    table { border-collapse: collapse; width: 90%; margin-bottom: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    th { background: #333; color: white; }
+    .PASS { background: #2ecc71; color: white; }
+    .FAIL { background: #e74c3c; color: white; }
+</style>
+</head><body>
+ 
+    <h1>Signal Validation Dashboard</h1>
+ 
+    <h2>Expected Values</h2>
+    <table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Min</th>
+      <th>Max</th>
+      <th>Mid</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>EngineSpeed</th>
+      <td>1000.0</td>
+      <td>6000.0</td>
+      <td>3500.0</td>
+    </tr>
+    <tr>
+      <th>Torque</th>
+      <td>50.0</td>
+      <td>180.0</td>
+      <td>115.0</td>
+    </tr>
+    <tr>
+      <th>CoolantTemp</th>
+      <td>60.0</td>
+      <td>110.0</td>
+      <td>85.0</td>
+    </tr>
+  </tbody>
+</table>
+ 
+    <h2>Actual Sample</h2>
+    <table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>EngineSpeed</th>
+      <th>Torque</th>
+      <th>CoolantTemp</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1000</td>
+      <td>50</td>
+      <td>60</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>3000</td>
+      <td>120</td>
+      <td>90</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>6000</td>
+      <td>180</td>
+      <td>110</td>
+    </tr>
+  </tbody>
+</table>
+ 
+    <h2>Comparison</h2>
+    <table border="1" class="dataframe PASS PASS PASS">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Signal</th>
+      <th>Exp Min</th>
+      <th>Exp Max</th>
+      <th>Exp Mid</th>
+      <th>Act Min</th>
+      <th>Act Max</th>
+      <th>Act Mid</th>
+      <th>Result</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EngineSpeed</td>
+      <td>1000</td>
+      <td>6000</td>
+      <td>3500.0</td>
+      <td>1000</td>
+      <td>6000</td>
+      <td>3500.0</td>
+      <td>PASS</td>
+    </tr>
+    <tr>
+      <td>Torque</td>
+      <td>50</td>
+      <td>180</td>
+      <td>115.0</td>
+      <td>50</td>
+      <td>180</td>
+      <td>115.0</td>
+      <td>PASS</td>
+    </tr>
+    <tr>
+      <td>CoolantTemp</td>
+      <td>60</td>
+      <td>110</td>
+      <td>85.0</td>
+      <td>60</td>
+      <td>110</td>
+      <td>85.0</td>
+      <td>PASS</td>
+    </tr>
+  </tbody>
+</table>
+ 
+    </body></html>
+    
